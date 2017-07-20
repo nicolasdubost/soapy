@@ -599,8 +599,8 @@ class AtmosConfig(ConfigObj):
         ``infinite``        bool: Use infinite phase screens?   ``False``
         ``tau0``            float: Turbulence coherence time,
                             if set wind speeds are scaled.      ``None``
-        ``wholeScrnSize``   int: Size of the phase screens 
-                            to store in the ``atmosphere`` 
+        ``wholeScrnSize``   int: Size of the phase screens
+                            to store in the ``atmosphere``
                             object. Required if large screens
                             used.                               ``None``
         ==================  =================================   ===========
@@ -731,6 +731,9 @@ class WfsConfig(ConfigObj):
         ``nx_guard_pixels``     int: Guard Pixels between
                                 Shack-Hartmann sub-apertures
                                 (Not currently operational)         ``0``
+        ``extensionWindow``     int: For CAWS, padding around
+                                pupil on detectorPlane. Avoids
+                                sudden crop of the pupil            ``2``
         =====================   ================================== ===========
 
 
@@ -766,6 +769,7 @@ class WfsConfig(ConfigObj):
                         ("subapFOV", 5),
                         ("correlationFFTPad", None),
                         ("nx_guard_pixels", 0),
+                        ("extensionWindow",2),
                         ]
 
         # Parameters which may be Set at some point and are allowed
@@ -943,10 +947,10 @@ class DmConfig(ConfigObj):
         ``gaussWidth``       float: Width of Guass DM actuator
                              as a fraction of the
                              inter-actuator spacing.             ``0.5``
-        ``altitude``         float: Altitude to which DM is 
+        ``altitude``         float: Altitude to which DM is
                              optically conjugated.               ``0``
-        ``diameter``         float: Diameter covered by DM in 
-                             metres. If ``None`` if telescope 
+        ``diameter``         float: Diameter covered by DM in
+                             metres. If ``None`` if telescope
                              diameter.                           ``None``
         ``gauss_width``      float: Width of gaussian influence
                              functions in units of actuator
@@ -1052,8 +1056,8 @@ class SciConfig(ConfigObj):
         ==================== =================================   ===========
         **Parameter**        **Description**                     **Default**
         -------------------- ---------------------------------   -----------
-        ``pxlScale``         float: Pixel scale of science 
-                             camera, in arcseconds. If set, 
+        ``pxlScale``         float: Pixel scale of science
+                             camera, in arcseconds. If set,
                              overwrites ``FOV``.                 ``None``
         ``type``             string: Type of science camera
                              This must the name of a class
