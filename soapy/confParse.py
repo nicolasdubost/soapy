@@ -733,7 +733,7 @@ class WfsConfig(ConfigObj):
                                 (Not currently operational)         ``0``
         ``extensionWindow``     int: For CAWS, padding around
                                 pupil on detectorPlane. Avoids
-                                sudden crop of the pupil            ``2``
+                                sudden crop of the pupil            ``4``
         =====================   ================================== ===========
 
 
@@ -769,7 +769,7 @@ class WfsConfig(ConfigObj):
                         ("subapFOV", 5),
                         ("correlationFFTPad", None),
                         ("nx_guard_pixels", 0),
-                        ("extensionWindow",2),
+                        ("extensionWindow",4),
                         ]
 
         # Parameters which may be Set at some point and are allowed

@@ -11,6 +11,10 @@ from .. import numbalib
 import multiprocessing as mp
 from multiprocessing import Process, Queue
 
+# Test
+# import pylab as pl
+# import FITS
+
 # xrange now just "range" in python3.
 # Following code means fastest implementation used in 2 and 3
 try:
@@ -296,7 +300,7 @@ class CAWS(base.WFS):
         # CAWS needs to know the phase rather than the EField
         if self.config.propagationMode=="Geometric":
             coord = int((self.sim_size - self.pupil_size)/2.)
-            self.cropPhase = self.los.phase[coord:-coord, coord:-coord]
+            self.cropPhase = (self.los.phase*self.mask)[coord:-coord, coord:-coord]
             # Have to make phase the correct size if geometric prop
             self.cropPhase = interp.zoom(self.cropPhase,self.detectorPxls2)
         else:
@@ -452,7 +456,7 @@ class CAWS(base.WFS):
             else:
                 slopes = np.angle(ef[self.detectorMask.nonzero()])
 
-            self.slopes = slopes.copy()
+            self.slopes = -slopes
 
         return self.slopes
 
