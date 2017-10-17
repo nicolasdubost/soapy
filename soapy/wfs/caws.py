@@ -13,7 +13,7 @@ from multiprocessing import Process, Queue
 
 # Test
 # import pylab as pl
-# import FITS
+import FITS
 
 # xrange now just "range" in python3.
 # Following code means fastest implementation used in 2 and 3
@@ -155,7 +155,8 @@ class CAWS(base.WFS):
         lader = np.arange(self.FFTPadding2) -(self.FFTPadding2
             -self.FFTPadding2%2)/2.
         xgrid,ygrid = np.meshgrid(lader,lader)
-        self.r1 = 1.25*self.wfsConfig.fftOversamp
+        # self.r1 = 1.25*self.wfsConfig.fftOversamp
+        self.r1 = 1.25*self.wfsConfig.fftOversamp/4
         self.r2 = self.nxLP*self.wfsConfig.fftOversamp/2.
         h1 = np.sqrt(np.square(xgrid) + np.square(ygrid)) < self.r1
         self.h2 = np.sqrt(np.square(xgrid+2*self.r2)
@@ -174,12 +175,12 @@ class CAWS(base.WFS):
                     for i in xrange(self.FFTPaddingList.size)]
 
         # Distance of carrier (modulating frequency) in FFT of wfsDetectorPlane
-        carrierDistance = int(float(self.wfsDetectorPlane.shape[0])/self.pxlsPerLP)
-        self.carrierPosition = self.wfsDetectorPlane.shape[0]/2 - carrierDistance
+        self.carrierDistance = int(float(self.wfsDetectorPlane.shape[0])/self.pxlsPerLP)
+        # self.demoEdge = self.wfsDetectorPlane.shape[0]/2 - self.carrierDistance
         # Demodulation mask
         mask_lader = np.arange(self.wfsDetectorPlane.shape[0])-self.wfsDetectorPlane.shape[0]/2
         mask_xgrid,mask_ygrid = np.meshgrid(mask_lader,mask_lader)
-        self.demoMask = np.sqrt(np.square(mask_xgrid)+np.square(mask_ygrid)) < carrierDistance/3.
+        self.demoMask = np.sqrt(np.square(mask_xgrid)+np.square(mask_ygrid)) < self.carrierDistance/3.
         ## END Allocating memory ----
 
 
@@ -193,11 +194,25 @@ class CAWS(base.WFS):
 
     def setMask(self, mask):
         super(CAWS, self).setMask(mask)
+        try:
+            self.mask = FITS.Read('/Users/nsdubost/gitnico/caws/soapy/spiderMask.fits')[1]
+            print 'SpiderMask loaded'
+        except:
+            pass
 
         # Find the mask to apply to the scaled EField
-        self.cropMask = aotools.circle(self.detectorPxls/2., self.detectorPxls)
-        self.cropMask2 = aotools.circle(self.detectorPxls2/2., self.detectorPxls2)
-        self.detectorMask = aotools.circle(self.detectorPxls/2., self.detectorPxls+self.extensionWindow*2)
+        coord = int((self.sim_size - self.pupil_size)/2.)
+        self.cropMask2 = interp.zoom(self.mask[coord:-coord,coord:-coord],self.detectorPxls2) >= 0.5
+        FITS.Write(self.cropMask2,'/Users/nsdubost/gitnico/caws/soapy/cropMask2.fits')
+
+        # Detector Mask
+        m = int(float(self.pxlsPerLP2) / self.pxlsPerLP)
+        if self.pxlsPerLP < self.pxlsPerLP2:
+            self.detectorMask = np.pad(interp.binImgs(self.cropMask2,m)>=m**2/2.,((self.extensionWindow,self.extensionWindow),(self.extensionWindow,self.extensionWindow)),mode='constant')
+        else:
+            self.detectorMask = np.pad(self.cropMask2,((self.extensionWindow,self.extensionWindow),(self.extensionWindow,self.extensionWindow)),mode='constant')
+        # self.detectorMask = aotools.circle(self.detectorPxls/2., self.detectorPxls+self.extensionWindow*2)
+
 
         # Making grating = grid
         lader = np.arange(self.detectorPxls2) -(self.detectorPxls2-1)/2.
@@ -206,6 +221,7 @@ class CAWS(base.WFS):
             %self.pxlsPerLP2).astype(int)
 
         self.cropMaskGrid2 = self.cropMask2*cropGrid2
+        FITS.Write(self.cropMaskGrid2,'/Users/nsdubost/gitnico/caws/soapy/cropMaskGrid2.fits')
         self.n_measurements = int(self.detectorMask.sum())
 
 
@@ -300,9 +316,11 @@ class CAWS(base.WFS):
         # CAWS needs to know the phase rather than the EField
         if self.config.propagationMode=="Geometric":
             coord = int((self.sim_size - self.pupil_size)/2.)
-            self.cropPhase = (self.los.phase*self.mask)[coord:-coord, coord:-coord]
+            self.cropPhase = (self.los.phase)[coord:-coord, coord:-coord]
             # Have to make phase the correct size if geometric prop
             self.cropPhase = interp.zoom(self.cropPhase,self.detectorPxls2)
+            FITS.Write(self.cropPhase,'/Users/nsdubost/gitnico/caws/soapy/cropPhase.fits')
+
         else:
             logger.warning('Not ready for non-Geometrical propagation')
             raise Exception('Not ready for non-Geometrical propagation')
@@ -340,10 +358,8 @@ class CAWS(base.WFS):
         ## Normalise so that integral of energy that made it through
         # the pupil and the grid is unitary
         self.FPlane /= self.cropMaskGrid2.sum()
+        FITS.Write(self.FPlane,'/Users/nsdubost/gitnico/caws/soapy/FPlane.fits')
 
-    def mpTest(self,j,queue):
-        print j
-        queue.put(j)
 
     def calcInterferogram(self,j,wvl,paddingList,basePadding,minP,maxP,Np,
             p,cropMaskGrid2,cropPhase,fpsf,wvlBand,queue):
@@ -388,17 +404,19 @@ class CAWS(base.WFS):
         if paddingList[j]<basePadding:
             edge = (basePadding-paddingList[j])/2
             E1aux = E1[edge:-edge,edge:-edge]
-            E2 = ifft2(E1aux)*np.sqrt(dwvl/wvlBand*1e-9)
+            E2 = fft2(E1aux)*np.sqrt(dwvl/(wvlBand*1e-9))
             fpaux = ifftshift(fpsf[edge:-edge,edge:-edge])
-            I3aux = np.abs(fft2(fpaux*E2))**2
+            FITS.Write(fftshift(np.abs(fpaux*E2)),'/Users/nsdubost/gitnico/caws/soapy/fpsf.fits')
+            I3aux = np.abs(ifft2(fpaux*E2))**2
             queue.put(np.pad(I3aux, ((edge,edge),(edge,edge)),
                                             mode='constant'))
         else:
             edge = (paddingList[j]-basePadding)/2
             E1aux = np.pad(E1, ((edge,edge),(edge,edge)) , mode='constant')
-            E2 = ifft2(E1aux)*np.sqrt(dwvl/wvlBand*1e-9)
+            E2 = fft2(E1aux)*np.sqrt(dwvl/(wvlBand*1e-9))
             fpaux = ifftshift(np.pad(fpsf, ((edge,edge),(edge,edge)) , mode='constant'))
-            I3aux = np.abs(fft2(fpaux*E2))**2
+            FITS.Write(fftshift(np.abs(fpaux*E2)),'/Users/nsdubost/gitnico/caws/soapy/fpsf.fits')
+            I3aux = np.abs(ifft2(fpaux*E2))**2
             if edge!=0:
                 queue.put(I3aux[edge:-edge,edge:-edge])
             else:
@@ -437,6 +455,8 @@ class CAWS(base.WFS):
         if self.wfsConfig.eReadNoise!=0:
             self.addReadNoise()
 
+        FITS.Write(self.wfsDetectorPlane,'/Users/nsdubost/gitnico/caws/soapy/wfsDetectorPlane.fits')
+
 
     def calculateSlopes(self):
         '''
@@ -446,17 +466,24 @@ class CAWS(base.WFS):
             ndarray: array of all WFS measurements
         '''
         FFT = fftshift(fft2(self.wfsDetectorPlane))
-        FFT2 = np.pad(FFT,((0,0),(self.carrierPosition,0)),mode='constant')[:,:self.wfsDetectorPlane.shape[0]]*self.demoMask
+        FITS.Write(np.abs(FFT),'/Users/nsdubost/gitnico/caws/soapy/FFTwfsDetectorPlane.fits')
+        FFT2 = np.pad(FFT,((0,0),(self.carrierDistance,0)),mode='constant')[:,:self.wfsDetectorPlane.shape[0]]*self.demoMask
+        FITS.Write(np.abs(FFT2),'/Users/nsdubost/gitnico/caws/soapy/FFT2wfsDetectorPlane.fits')
         ef = ifft2(ifftshift(FFT2))
         if self.getEF:
+            # print 'Getting Statics'
+            # print 'self.detectorMask.sum() = ',self.detectorMask.sum()
             self.slopes = ef[self.detectorMask.nonzero()]/np.abs(ef[self.detectorMask.nonzero()])
+            # print 'self.slopes.shape = ',self.slopes.shape
         else:
+            # print 'Not getting Statics'
+            # print 'self.detectorMask.sum() = ',self.detectorMask.sum()
             if np.any(self.staticData):
                 slopes = np.angle(ef[self.detectorMask.nonzero()]/self.staticData)
             else:
                 slopes = np.angle(ef[self.detectorMask.nonzero()])
 
-            self.slopes = -slopes
+            self.slopes = slopes.copy()
 
         return self.slopes
 
